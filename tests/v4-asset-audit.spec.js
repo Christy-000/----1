@@ -1,0 +1,143 @@
+const { expect, test } = require("playwright/test");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const transparentUiAssets = [
+  "images/ui/warning_stamp.png",
+  "images/ui/blood_splatter.png",
+  "images/ui/companion_frame.png",
+  "images/ui/card_corner_damage.png",
+  "images/ui/torn_paper_mask.png",
+  "images/ui/rust_border_9slice.png",
+  "images/ui/button_plate_9slice.png",
+];
+
+const integratedUiTextures = [
+  "images/ui/paper_texture.png",
+  "images/ui/grunge_noise.png",
+  "images/ui/radio_scanline.png",
+];
+
+const unsafeAlphaUiTextures = [
+  "images/ui/warning_stamp.png",
+  "images/ui/blood_splatter.png",
+  "images/ui/companion_frame.png",
+  "images/ui/card_corner_damage.png",
+  "images/ui/torn_paper_mask.png",
+  "images/ui/rust_border_9slice.png",
+  "images/ui/button_plate_9slice.png",
+];
+
+function manifestImagePaths() {
+  const manifest = fs.readFileSync(path.resolve("ASSET_MANIFEST.md"), "utf8");
+  return [...manifest.matchAll(/`(images\/(?:scenes|ui)\/[^`]+)`/g)].map((match) => match[1]);
+}
+
+function assertExactPathCase(relativePath) {
+  const parts = relativePath.split("/");
+  let cursor = process.cwd();
+  for (const part of parts) {
+    const names = fs.readdirSync(cursor);
+    expect(names).toContain(part);
+    cursor = path.join(cursor, part);
+  }
+  expect(fs.existsSync(cursor)).toBeTruthy();
+}
+
+function pngAlphaInfo(relativePath) {
+  const buffer = fs.readFileSync(path.resolve(relativePath));
+  expect(buffer.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+  const colorType = buffer[25];
+  const hasAlphaChannel = colorType === 4 || colorType === 6;
+  let hasTransparentPixels = false;
+
+  if (hasAlphaChannel && colorType === 6) {
+    const idatChunks = [];
+    let offset = 8;
+    while (offset < buffer.length) {
+      const length = buffer.readUInt32BE(offset);
+      const type = buffer.subarray(offset + 4, offset + 8).toString("ascii");
+      if (type === "IDAT") idatChunks.push(buffer.subarray(offset + 8, offset + 8 + length));
+      offset += 12 + length;
+    }
+    const zlib = require("node:zlib");
+    const raw = zlib.inflateSync(Buffer.concat(idatChunks));
+    const stride = width * 4;
+    let rowStart = 0;
+    for (let y = 0; y < height; y += 1) {
+      const filter = raw[rowStart];
+      if (filter !== 0) break;
+      const row = raw.subarray(rowStart + 1, rowStart + 1 + stride);
+      for (let x = 3; x < row.length; x += 4) {
+        if (row[x] < 255) {
+          hasTransparentPixels = true;
+          break;
+        }
+      }
+      if (hasTransparentPixels) break;
+      rowStart += 1 + stride;
+    }
+  }
+
+  return { colorType, hasAlphaChannel, hasTransparentPixels };
+}
+
+test("asset manifest images exist with exact case and scene images load in browser", async ({ page }) => {
+  const paths = manifestImagePaths();
+  expect(paths.length).toBeGreaterThan(0);
+  for (const assetPath of paths) {
+    assertExactPathCase(assetPath);
+  }
+
+  const scenePaths = paths.filter((assetPath) => assetPath.startsWith("images/scenes/"));
+  await page.goto("/index.html");
+  const loadResults = await page.evaluate(async (assets) => {
+    return Promise.all(
+      assets.map(
+        (asset) =>
+          new Promise((resolve) => {
+            const image = new Image();
+            image.onload = () => resolve({ asset, ok: true, width: image.naturalWidth, height: image.naturalHeight });
+            image.onerror = () => resolve({ asset, ok: false, width: 0, height: 0 });
+            image.src = asset;
+          }),
+      ),
+    );
+  }, scenePaths);
+
+  for (const result of loadResults) {
+    expect(result.ok, result.asset).toBeTruthy();
+    expect(result.width, result.asset).toBeGreaterThan(0);
+    expect(result.height, result.asset).toBeGreaterThan(0);
+  }
+});
+
+test("transparent UI assets have alpha channel information", () => {
+  for (const assetPath of transparentUiAssets) {
+    assertExactPathCase(assetPath);
+    const info = pngAlphaInfo(assetPath);
+    expect([0, 2, 3, 4, 6]).toContain(info.colorType);
+    expect(typeof info.hasAlphaChannel).toBe("boolean");
+    expect(typeof info.hasTransparentPixels).toBe("boolean");
+  }
+});
+
+test("integrated UI textures are limited to safe assets and have CSS fallback layers", () => {
+  const css = fs.readFileSync(path.resolve("styles/game.css"), "utf8");
+
+  for (const assetPath of integratedUiTextures) {
+    assertExactPathCase(assetPath);
+    expect(css).toContain(assetPath);
+  }
+
+  for (const assetPath of unsafeAlphaUiTextures) {
+    expect(css).not.toContain(assetPath);
+  }
+
+  expect(css).toContain("linear-gradient");
+  expect(css).toContain("pointer-events: none");
+  expect(css).not.toContain("border-image-source");
+  expect(css).not.toContain("border-image-slice");
+});

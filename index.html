@@ -1,0 +1,43 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#10100e">
+    <title>灰潮之后 / After the Grey Tide v4_clean</title>
+    <link rel="stylesheet" href="styles/game.css">
+  </head>
+  <body>
+    <div id="game-root" data-testid="game-root" aria-live="polite"></div>
+    <noscript>需要启用 JavaScript 才能游玩《灰潮之后》。</noscript>
+    <script>
+      if (window.location.protocol === "file:") {
+        const script = document.createElement("script");
+        script.src = "dist/grey-tide-standalone.js";
+        script.onerror = () => {
+          const root = document.querySelector("#game-root");
+          root.innerHTML = `
+            <main class="game-screen file-warning-screen">
+              <img class="scene-background" src="images/scenes/rv_interior_day.png" alt="">
+              <div class="screen-vignette"></div>
+              <section class="file-warning">
+                <p class="chapter-label">LOCAL FILE BUILD MISSING</p>
+                <h1>灰潮之后</h1>
+                <p>直接打开 index.html 需要 dist/grey-tide-standalone.js。请先运行 npm run build:file，或用本地服务器打开。</p>
+              </section>
+            </main>
+          `;
+        };
+        document.body.appendChild(script);
+      }
+    </script>
+    <script>
+      if (window.location.protocol !== "file:") {
+        const script = document.createElement("script");
+        script.type = "module";
+        script.src = "src/main.js";
+        document.body.appendChild(script);
+      }
+    </script>
+  </body>
+</html>

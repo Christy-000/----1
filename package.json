@@ -1,0 +1,15 @@
+{
+  "name": "after-the-grey-tide-v4-clean",
+  "version": "0.4.0",
+  "private": true,
+  "description": "A custom HTML/CSS/JS AVG survival simulator vertical slice for 灰潮之后 / After the Grey Tide.",
+  "scripts": {
+    "build:file": "node scripts/build-file-bundle.mjs",
+    "dev": "python -m http.server 4173",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "playwright": "^1.45.0"
+  }
+}
